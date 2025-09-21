@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" />
+  <title>FunnyCloud — MiniApp</title>
+  <style>
+    :root{
+      --bg:#0b0d10; --card:#121315; --muted:#9aa3ad; --accent:#49a7ff; --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Roboto,Arial,sans-serif;background:linear-gradient(180deg,var(--bg),#070809);color:#fff;-webkit-font-smoothing:antialiased}
+    .app{max-width:520px;margin:0 auto;padding:14px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .logo{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#6fe0ff,#d07bff);display:flex;align-items:center;justify-content:center;font-weight:800;color:#042231}
+    h1{font-size:18px;margin:0}
+    .subtitle{font-size:13px;color:var(--muted)}
+    .controls{display:flex;gap:8px;margin:12px 0}
+    .chip{background:var(--glass);padding:8px 12px;border-radius:999px;font-size:13px;color:var(--muted);cursor:pointer}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 16px rgba(0,0,0,0.5)}
+    .card img{width:100%;height:120px;object-fit:cover;border-radius:8px}
+    .price{font-weight:700;font-size:16px}
+    .title{font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .fab{position:fixed;right:16px;bottom:18px;background:linear-gradient(90deg,var(--accent),#2f8ed8);border-radius:999px;width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 12px 34px rgba(33,120,200,0.25);cursor:pointer}
+    .modal-back{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;justify-content:center;padding:18px}
+    .sheet{width:100%;max-width:520px;background:var(--card);border-radius:14px;padding:12px 14px;box-shadow:0 -8px 36px rgba(0,0,0,0.6)}
+    .bigimg{width:100%;height:220px;object-fit:cover;border-radius:10px}
+    .add-btn{background:linear-gradient(90deg,var(--accent),#2fa0df);padding:12px;border-radius:10px;text-align:center;font-weight:700;margin-top:10px;cursor:pointer}
+    .admin-panel{margin-top:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:10px;border-radius:10px}
+    input, textarea, select {width:100%;padding:10px;border-radius:8px;border:none;background:#0d0f11;color:#fff;margin-top:8px}
+    label{font-size:13px;color:var(--muted);display:block;margin-top:8px}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    .row{display:flex;gap:8px}
+    .btn{padding:10px;border-radius:8px;border:none;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),#2fa0df);color:#042231}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .qty{display:inline-flex;align-items:center;gap:8px}
+    .qty button{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px;border-radius:6px;color:#fff;cursor:pointer}
+    @media (min-width:700px){.app{margin-top:20px}}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header>
+      <div class="logo">FC</div>
+      <div style="flex:1">
+        <h1>FunnyCloud</h1>
+        <div class="subtitle">Мини-магазин — Telegram Mini App</div>
+      </div>
+      <div style="width:36px;height:36px;border-radius:9px;background:#161618;display:flex;align-items:center;justify-content:center">⋮</div>
+    </header>
+
+    <div class="controls">
+      <div id="categoryFilter" class="chip">Все</div>
+      <div class="chip" id="refreshBtn">Обновить</div>
+    </div>
+
+    <div id="status" class="small muted">Загрузка...</div>
+    <div id="list" class="grid" style="margin-top:10px"></div>
+
+    <div style="height:100px"></div>
+    <div class="fab" id="cartBtn">🛍</div>
+
+    <!-- product modal -->
+    <div id="productModal" style="display:none" class="modal-back">
+      <div class="sheet" id="productSheet">
+        <div id="productContent"></div>
+        <div class="add-btn" id="addToCartBtn">Добавить в корзину</div>
+      </div>
+    </div>
+
+    <!-- cart sheet -->
+    <div id="cartSheet" class="modal-back" style="display:none;align-items:flex-end;">
+      <div class="sheet">
+        <div class="topbar"><div style="font-weight:700">Корзина</div><div id="cartBack" class="small muted" style="cursor:pointer">Назад</div></div>
+        <div id="cartItems" style="margin-top:8px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div style="font-weight:700">Итого</div><div id="cartTotal">0 ₽</div></div>
+        <div class="add-btn" id="checkoutBtn" style="margin-top:12px">Оформить (тест)</div>
+      </div>
+    </div>
+
+    <!-- admin area -->
+    <div id="adminArea" style="display:none" class="admin-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700">Админ-панель</div>
+        <div class="muted" id="adminUser"></div>
+      </div>
+
+      <label>Название</label>
+      <input id="adm_title" placeholder="Название товара" />
+      <label>Цена (₽)</label>
+      <input id="adm_price" placeholder="2800" />
+      <label>Категория</label>
+      <div style="display:flex;gap:8px">
+        <select id="adm_category" style="flex:1"></select>
+        <input id="new_category" placeholder="Новая кат." style="width:140px" />
+        <button id="add_category_btn" class="btn ghost">Добавить</button>
+      </div>
+      <label>Изображение (файл)</label>
+      <input id="adm_image_file" type="file" accept="image/*" />
+      <label>Описание</label>
+      <textarea id="adm_desc" rows="3" placeholder="Короткое описание"></textarea>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="adm_list">Список</button>
+        <button class="btn primary" id="adm_add">Добавить товар</button>
+      </div>
+
+      <div style="margin-top:12px" id="adm_list_out"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const API = location.origin;
+    const isTelegram = !!(window.Telegram && Telegram.WebApp);
+    let INITDATA_RAW = null; // will hold raw initData string if present
+    let currentFilter = '';
+
+    // Attach handlers
+    async function init(){
+      // if inside Telegram, pick up initData
+      if(isTelegram){
+        try{
+          INITDATA_RAW = Telegram.WebApp.initData || '';
+          window.__INITDATA_RAW = INITDATA_RAW;
+        }catch(e){
+          console.warn('tg init error', e);
+        }
+      }
+      await loadCategories();
+      await loadProducts();
+      if(isTelegram) await checkAuth(); // will show admin UI when admin
+    }
+
+    function authFetch(path, opts = {}){
+      opts.headers = opts.headers || {};
+      if(INITDATA_RAW) opts.headers['Authorization'] = 'tma ' + INITDATA_RAW;
+      return fetch(API + path, opts);
+    }
+
+    async function loadProducts(){
+      const status = document.getElementById('status');
+      status.innerText = 'Загрузка товаров...';
+      try{
+        const res = await fetch(API + '/api/products');
+        const js = await res.json();
+        renderList(js.products || []);
+        status.innerText = 'Товаров: ' + (js.products||[]).length;
+      }catch(e){
+        status.innerText = 'Ошибка при загрузке';
+        console.error(e);
+      }
+    }
+
+    async function loadCategories(){
+      try{
+        const res = await fetch(API + '/api/categories');
+        const js = await res.json();
+        const sel = document.getElementById('adm_category');
+        sel.innerHTML = '<option value="">Без категории</option>';
+        js.categories.forEach(c=>{
+          const opt = document.createElement('option');
+          opt.value = c.id; opt.textContent = c.name;
+          sel.appendChild(opt);
+        });
+        // render category filter chips
+        const catFilter = document.getElementById('categoryFilter');
+        catFilter.onclick = ()=>{ // simple cycle: all -> first -> ...
+          if(!js.categories.length) return;
+          const idx = js.categories.findIndex(c => c.id === currentFilter);
+          const next = (idx + 1) % (js.categories.length + 1);
+          if(next === 0){ currentFilter = ''; catFilter.textContent = 'Все'; }
+          else { currentFilter = js.categories[next-1].id; catFilter.textContent = js.categories[next-1].name; }
+          loadProductsFiltered();
+        };
+      }catch(e){
+        console.warn('no categories', e);
+      }
+    }
+
+    async function loadProductsFiltered(){
+      // simple client-side filtering: fetch all and filter by category id
+      try{
+        const res = await fetch(API + '/api/products');
+        const js = await res.json();
+        let items = js.products || [];
+        if(currentFilter) items = items.filter(p => p.category === currentFilter);
+        renderList(items);
+      }catch(e){ console.warn(e); }
+    }
+
+    function renderList(items){
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      items.forEach(p=>{
+        const el = document.createElement('div'); el.className = 'card';
+        el.dataset.id = p.id;
+        el.innerHTML = `
+          <img src="${p.image || '/uploads/placeholder.png'}" alt="">
+          <div class="title">${escapeHtml(p.title)}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="price">${p.price} ₽</div>
+            <div class="small muted">${p.category ? p.category : ''}</div>
+          </div>
+        `;
+        el.addEventListener('click', ()=> openProduct(p));
+        list.appendChild(el);
+      });
+    }
+
+    function openProduct(p){
+      const modal = document.getElementById('productModal');
+      const content = document.getElementById('productContent');
+      content.innerHTML = `
+        <img class="bigimg" src="${p.image || '/uploads/placeholder.png'}" />
+        <h3 style="margin:8px 0">${escapeHtml(p.title)}</h3>
+        <div class="muted">${escapeHtml(p.description || '')}</div>
+        <div style="margin-top:8px;font-weight:700">${p.price} ₽</div>
+      `;
+      modal.style.display = 'flex';
+      document.getElementById('addToCartBtn').onclick = ()=>{ addToCart(p); modal.style.display='none'; };
+      modal.onclick = (ev)=>{ if(ev.target === modal) modal.style.display='none' };
+    }
+
+    // cart
+    function getCart(){ try{ return JSON.parse(localStorage.getItem('fc_cart')||'[]') }catch(e){return[]} }
+    function saveCart(c){ localStorage.setItem('fc_cart', JSON.stringify(c)); renderCart(); }
+    function addToCart(p){ const c = getCart(); const it = c.find(x=>x.id===p.id); if(it) it.qty++; else c.push({...p, qty:1}); saveCart(c); alert('Добавлено в корзину'); }
+    function renderCart(){
+      const c = getCart(); const wrap=document.getElementById('cartItems'); wrap.innerHTML=''; let total=0;
+      c.forEach(it=>{
+        total += it.price * it.qty;
+        const row = document.createElement('div');
+        row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.margin='8px 0';
+        row.innerHTML = `<div style="max-width:60%"><b>${escapeHtml(it.title)}</b><div class="small muted">${it.price} ₽</div></div>`;
+        const controls = document.createElement('div');
+        controls.className = 'qty';
+        const minus = document.createElement('button'); minus.textContent='−';
+        const plus = document.createElement('button'); plus.textContent='+';
+        const qtySpan = document.createElement('span'); qtySpan.textContent = it.qty;
+        minus.onclick = ()=>{ if(it.qty>1){ it.qty--; saveCart(c); } else { if(confirm('Удалить товар?')){ const idx=c.findIndex(x=>x.id===it.id); c.splice(idx,1); saveCart(c); } } };
+        plus.onclick = ()=>{ it.qty++; saveCart(c); };
+        controls.appendChild(minus); controls.appendChild(qtySpan); controls.appendChild(plus);
+        row.appendChild(controls);
+        wrap.appendChild(row);
+      });
+      document.getElementById('cartTotal').innerText = total + ' ₽';
+    }
+
+    document.getElementById('cartBtn').addEventListener('click', ()=>{ document.getElementById('cartSheet').style.display='flex'; renderCart(); });
+    document.getElementById('cartBack').addEventListener('click', ()=>{ document.getElementById('cartSheet').style.display='none'; });
+
+    // admin: check auth
+    async function checkAuth(){
+      if(!INITDATA_RAW) return;
+      try{
+        const res = await fetch(API + '/api/verify', { method:'POST', headers: { 'Authorization': 'tma '+INITDATA_RAW }});
+        const js = await res.json();
+        if(js.ok && js.is_admin){
+          document.getElementById('adminArea').style.display='block';
+          document.getElementById('adminUser').innerText = js.user.first_name ? js.user.first_name : (js.user.username || ('id:'+js.user.id));
+          attachAdminHandlers();
+          loadAdminList();
+        } else {
+          console.warn('not admin or verify failed', js);
+        }
+      }catch(e){ console.warn('verify error', e); }
+    }
+
+    function attachAdminHandlers(){
+      document.getElementById('adm_add').onclick = async ()=>{
+        const title = document.getElementById('adm_title').value.trim();
+        const price = document.getElementById('adm_price').value.trim();
+        const desc = document.getElementById('adm_desc').value.trim();
+        const category = document.getElementById('adm_category').value || '';
+        const fileInput = document.getElementById('adm_image_file');
+        if(!title || !price){ alert('Введите название и цену'); return; }
+        let imageUrl = '';
+        if(fileInput.files && fileInput.files[0]){
+          // upload first
+          const fd = new FormData();
+          fd.append('file', fileInput.files[0]);
+          // attach initData
+          if(INITDATA_RAW) fd.append('initData', INITDATA_RAW);
+          const r = await fetch(API + '/api/upload', { method:'POST', body: fd });
+          const jr = await r.json();
+          if(!jr.ok){ alert('Ошибка загрузки файла: '+ (jr.error || JSON.stringify(jr))); return; }
+          imageUrl = jr.url;
+        }
+        // create product
+        const form = new FormData();
+        form.append('title', title);
+        form.append('price', price);
+        form.append('description', desc);
+        form.append('category', category);
+        if(imageUrl) form.append('image', imageUrl);
+        if(INITDATA_RAW) form.append('initData', INITDATA_RAW);
+        const resp = await fetch(API + '/api/product', { method:'POST', body: form });
+        const jresp = await resp.json();
+        if(!jresp.ok){ alert('Ошибка добавления: ' + (jresp.error||JSON.stringify(jresp))); return; }
+        alert('Товар добавлен');
+        document.getElementById('adm_title').value=''; document.getElementById('adm_price').value=''; document.getElementById('adm_desc').value='';
+        loadProducts(); loadAdminList(); loadCategories();
+      };
+
+      document.getElementById('adm_list').onclick = loadAdminList;
+
+      document.getElementById('add_category_btn').onclick = async ()=>{
+        const name = document.getElementById('new_category').value.trim();
+        if(!name) return alert('Введите имя категории');
+        const resp = await fetch(API + '/api/category', { method:'POST', headers: { 'Content-Type':'application/json', 'Authorization': 'tma '+INITDATA_RAW }, body: JSON.stringify({ name }) });
+        const jr = await resp.json();
+        if(!jr.ok){ alert('Ошибка: ' + (jr.error || JSON.stringify(jr))); return; }
+        document.getElementById('new_category').value='';
+        await loadCategories();
+        alert('Категория добавлена');
+      };
+    }
+
+    async function loadAdminList(){
+      const out = document.getElementById('adm_list_out');
+      out.innerHTML = '...';
+      try{
+        const res = await fetch(API + '/api/products');
+        const js = await res.json();
+        if(!js.products.length){ out.innerText = 'Список пуст'; return; }
+        // render with delete buttons
+        out.innerHTML = '';
+        js.products.forEach(p=>{
+          const div = document.createElement('div');
+          div.style.display='flex'; div.style.justifyContent='space-between'; div.style.marginTop='8px'; div.style.alignItems='center';
+          const left = document.createElement('div'); left.style.maxWidth='65%'; left.innerHTML = `<b>${escapeHtml(p.title)}</b><div class="small muted">${p.price} ₽</div>`;
+          const del = document.createElement('button'); del.className='btn ghost'; del.textContent='Удалить';
+          del.dataset.id = p.id;
+          del.onclick = async ()=>{
+            if(!confirm('Удалить товар?')) return;
+            const resp = await fetch(API + '/api/product/'+p.id, { method:'DELETE', headers: { 'Authorization': 'tma '+INITDATA_RAW }});
+            const jr = await resp.json();
+            if(!jr.ok){ alert('Ошибка: ' + (jr.error||JSON.stringify(jr))); return; }
+            alert('Удалено');
+            loadProducts(); loadAdminList();
+          };
+          div.appendChild(left); div.appendChild(del);
+          out.appendChild(div);
+        });
+      }catch(e){ out.innerText = 'Ошибка'; console.warn(e); }
+    }
+
+    // upload via explicit upload button is used inside adm_add flow; direct endpoint available too
+    // helpers
+    function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    // init app
+    document.getElementById('refreshBtn').addEventListener('click', ()=> loadProducts());
+    window.addEventListener('load', init);
+
+    // simple checkout: send cart as message to admin chat via backend (not implemented server-side yet)
+    document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
+      const c = getCart();
+      if(!c.length) return alert('Корзина пуста');
+      // For now just clear cart and show a message. If you want, we can POST to server to send to admin chat.
+      alert('Тест оформления: заказ сформирован. (реальная отправка на бэкенд не реализована по умолчанию)');
+      localStorage.removeItem('fc_cart');
+      renderCart();
+      document.getElementById('cartSheet').style.display='none';
+    });
+
+    // expose for debugging
+    window._debug = { loadProducts, loadCategories, checkAuth };
+
+  </script>
+</body>
+</html>
