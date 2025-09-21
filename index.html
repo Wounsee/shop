@@ -39,6 +39,7 @@
     .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px}
     .qty{display:inline-flex;align-items:center;gap:8px}
     .qty button{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px;border-radius:6px;color:#fff;cursor:pointer}
+    #topMenuBtn{width:36px;height:36px;border-radius:9px;background:#161618;display:flex;align-items:center;justify-content:center;cursor:pointer}
     @media (min-width:700px){.app{margin-top:20px}}
   </style>
 </head>
@@ -50,7 +51,7 @@
         <h1>FunnyCloud</h1>
         <div class="subtitle">Мини-магазин — Telegram Mini App</div>
       </div>
-      <div style="width:36px;height:36px;border-radius:9px;background:#161618;display:flex;align-items:center;justify-content:center">⋮</div>
+      <div id="topMenuBtn">⋮</div>
     </header>
 
     <div class="controls">
@@ -117,30 +118,68 @@
   <script>
     const API = location.origin;
     const isTelegram = !!(window.Telegram && Telegram.WebApp);
-    let INITDATA_RAW = null; // will hold raw initData string if present
-    let currentFilter = '';
+    let INITDATA_RAW = null;
+    let ADMIN_UNLOCK = false;          // true после ввода правильного пароля
+    const ADMIN_PASSWORD = '123';      // пароль, как ты просил
 
-    // Attach handlers
-    async function init(){
-      // if inside Telegram, pick up initData
-      if(isTelegram){
-        try{
-          INITDATA_RAW = Telegram.WebApp.initData || '';
-          window.__INITDATA_RAW = INITDATA_RAW;
-        }catch(e){
-          console.warn('tg init error', e);
-        }
-      }
-      await loadCategories();
-      await loadProducts();
-      if(isTelegram) await checkAuth(); // will show admin UI when admin
+    // pick initData if present (WebApp)
+    if(isTelegram){
+      try{ INITDATA_RAW = Telegram.WebApp.initData || ''; window.__INITDATA_RAW = INITDATA_RAW; }catch(e){}
     }
 
+    // top menu: prompt for admin password
+    document.getElementById('topMenuBtn').addEventListener('click', ()=>{
+      const pass = prompt('Введите пароль администратора:');
+      if(pass === ADMIN_PASSWORD){
+        ADMIN_UNLOCK = true;
+        localStorage.setItem('fc_admin_unlocked','1');
+        document.getElementById('adminArea').style.display = 'block';
+        document.getElementById('adminUser').innerText = 'Local admin';
+        attachAdminHandlers();
+        loadAdminList();
+        alert('Админ-доступ открыт');
+      } else {
+        alert('Неверный пароль');
+      }
+    });
+
+    // restore unlock state across reloads
+    if(localStorage.getItem('fc_admin_unlocked') === '1'){
+      ADMIN_UNLOCK = true;
+      document.getElementById('adminArea').style.display = 'block';
+      document.getElementById('adminUser').innerText = 'Local admin';
+    }
+
+    // helper to add admin password header if unlocked
     function authFetch(path, opts = {}){
       opts.headers = opts.headers || {};
       if(INITDATA_RAW) opts.headers['Authorization'] = 'tma ' + INITDATA_RAW;
+      if(ADMIN_UNLOCK) opts.headers['X-Admin-Pass'] = ADMIN_PASSWORD;
       return fetch(API + path, opts);
     }
+
+    async function init(){
+      await loadCategories();
+      await loadProducts();
+      if(isTelegram && INITDATA_RAW){
+        // if WebApp present, try server verify to show Telegram-based admin as well
+        try{
+          const r = await fetch(API + '/api/verify', { method:'POST', headers: { 'Authorization': 'tma '+INITDATA_RAW }});
+          const js = await r.json();
+          if(js.ok && js.is_admin){
+            document.getElementById('adminArea').style.display='block';
+            document.getElementById('adminUser').innerText = js.user.first_name ? js.user.first_name : ('id:'+js.user.id);
+            attachAdminHandlers();
+            loadAdminList();
+          }
+        }catch(e){ console.warn(e); }
+      } else if(ADMIN_UNLOCK){
+        attachAdminHandlers();
+        loadAdminList();
+      }
+    }
+
+    function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
     async function loadProducts(){
       const status = document.getElementById('status');
@@ -167,28 +206,30 @@
           opt.value = c.id; opt.textContent = c.name;
           sel.appendChild(opt);
         });
-        // render category filter chips
         const catFilter = document.getElementById('categoryFilter');
-        catFilter.onclick = ()=>{ // simple cycle: all -> first -> ...
-          if(!js.categories.length) return;
-          const idx = js.categories.findIndex(c => c.id === currentFilter);
-          const next = (idx + 1) % (js.categories.length + 1);
-          if(next === 0){ currentFilter = ''; catFilter.textContent = 'Все'; }
-          else { currentFilter = js.categories[next-1].id; catFilter.textContent = js.categories[next-1].name; }
-          loadProductsFiltered();
+        let idx = -1;
+        catFilter.onclick = ()=>{
+          const arr = js.categories || [];
+          idx = (idx + 1) % (arr.length + 1);
+          if(idx === 0){ catFilter.textContent = 'Все'; loadProducts(); }
+          else { catFilter.textContent = arr[idx-1].name; // filter client-side
+            const all = document.querySelectorAll('.card');
+            document.querySelectorAll('.card').forEach(el => {
+              // simple: hide cards whose data-category != chosen id (we do not store id on card currently) -> reload filter on server would be better
+            });
+            // we will just reload and filter server-side next
+            loadProductsFiltered(arr[idx-1].id);
+          }
         };
-      }catch(e){
-        console.warn('no categories', e);
-      }
+      }catch(e){ console.warn('no categories', e); }
     }
 
-    async function loadProductsFiltered(){
-      // simple client-side filtering: fetch all and filter by category id
+    async function loadProductsFiltered(catId){
       try{
         const res = await fetch(API + '/api/products');
         const js = await res.json();
         let items = js.products || [];
-        if(currentFilter) items = items.filter(p => p.category === currentFilter);
+        if(catId) items = items.filter(p => p.category === catId);
         renderList(items);
       }catch(e){ console.warn(e); }
     }
@@ -254,24 +295,11 @@
     document.getElementById('cartBtn').addEventListener('click', ()=>{ document.getElementById('cartSheet').style.display='flex'; renderCart(); });
     document.getElementById('cartBack').addEventListener('click', ()=>{ document.getElementById('cartSheet').style.display='none'; });
 
-    // admin: check auth
-    async function checkAuth(){
-      if(!INITDATA_RAW) return;
-      try{
-        const res = await fetch(API + '/api/verify', { method:'POST', headers: { 'Authorization': 'tma '+INITDATA_RAW }});
-        const js = await res.json();
-        if(js.ok && js.is_admin){
-          document.getElementById('adminArea').style.display='block';
-          document.getElementById('adminUser').innerText = js.user.first_name ? js.user.first_name : (js.user.username || ('id:'+js.user.id));
-          attachAdminHandlers();
-          loadAdminList();
-        } else {
-          console.warn('not admin or verify failed', js);
-        }
-      }catch(e){ console.warn('verify error', e); }
-    }
-
+    // admin handlers
     function attachAdminHandlers(){
+      if(window._adminHandlersAttached) return;
+      window._adminHandlersAttached = true;
+
       document.getElementById('adm_add').onclick = async ()=>{
         const title = document.getElementById('adm_title').value.trim();
         const price = document.getElementById('adm_price').value.trim();
@@ -279,26 +307,29 @@
         const category = document.getElementById('adm_category').value || '';
         const fileInput = document.getElementById('adm_image_file');
         if(!title || !price){ alert('Введите название и цену'); return; }
+
         let imageUrl = '';
         if(fileInput.files && fileInput.files[0]){
-          // upload first
           const fd = new FormData();
           fd.append('file', fileInput.files[0]);
-          // attach initData
+          // attach admin password if unlocked
+          if(ADMIN_UNLOCK) fd.append('admin_pass', ADMIN_PASSWORD);
           if(INITDATA_RAW) fd.append('initData', INITDATA_RAW);
           const r = await fetch(API + '/api/upload', { method:'POST', body: fd });
           const jr = await r.json();
           if(!jr.ok){ alert('Ошибка загрузки файла: '+ (jr.error || JSON.stringify(jr))); return; }
           imageUrl = jr.url;
         }
-        // create product
+
         const form = new FormData();
         form.append('title', title);
         form.append('price', price);
         form.append('description', desc);
         form.append('category', category);
         if(imageUrl) form.append('image', imageUrl);
+        if(ADMIN_UNLOCK) form.append('admin_pass', ADMIN_PASSWORD);
         if(INITDATA_RAW) form.append('initData', INITDATA_RAW);
+
         const resp = await fetch(API + '/api/product', { method:'POST', body: form });
         const jresp = await resp.json();
         if(!jresp.ok){ alert('Ошибка добавления: ' + (jresp.error||JSON.stringify(jresp))); return; }
@@ -312,7 +343,10 @@
       document.getElementById('add_category_btn').onclick = async ()=>{
         const name = document.getElementById('new_category').value.trim();
         if(!name) return alert('Введите имя категории');
-        const resp = await fetch(API + '/api/category', { method:'POST', headers: { 'Content-Type':'application/json', 'Authorization': 'tma '+INITDATA_RAW }, body: JSON.stringify({ name }) });
+        const headers = {};
+        if(ADMIN_UNLOCK) headers['X-Admin-Pass'] = ADMIN_PASSWORD;
+        if(INITDATA_RAW) headers['Authorization'] = 'tma ' + INITDATA_RAW;
+        const resp = await fetch(API + '/api/category', { method:'POST', headers: Object.assign({'Content-Type':'application/json'}, headers), body: JSON.stringify({ name, admin_pass: ADMIN_UNLOCK ? ADMIN_PASSWORD : undefined }) });
         const jr = await resp.json();
         if(!jr.ok){ alert('Ошибка: ' + (jr.error || JSON.stringify(jr))); return; }
         document.getElementById('new_category').value='';
@@ -328,17 +362,18 @@
         const res = await fetch(API + '/api/products');
         const js = await res.json();
         if(!js.products.length){ out.innerText = 'Список пуст'; return; }
-        // render with delete buttons
         out.innerHTML = '';
         js.products.forEach(p=>{
           const div = document.createElement('div');
           div.style.display='flex'; div.style.justifyContent='space-between'; div.style.marginTop='8px'; div.style.alignItems='center';
           const left = document.createElement('div'); left.style.maxWidth='65%'; left.innerHTML = `<b>${escapeHtml(p.title)}</b><div class="small muted">${p.price} ₽</div>`;
           const del = document.createElement('button'); del.className='btn ghost'; del.textContent='Удалить';
-          del.dataset.id = p.id;
           del.onclick = async ()=>{
             if(!confirm('Удалить товар?')) return;
-            const resp = await fetch(API + '/api/product/'+p.id, { method:'DELETE', headers: { 'Authorization': 'tma '+INITDATA_RAW }});
+            const headers = {};
+            if(ADMIN_UNLOCK) headers['X-Admin-Pass'] = ADMIN_PASSWORD;
+            if(INITDATA_RAW) headers['Authorization'] = 'tma ' + INITDATA_RAW;
+            const resp = await fetch(API + '/api/product/'+p.id, { method:'DELETE', headers });
             const jr = await resp.json();
             if(!jr.ok){ alert('Ошибка: ' + (jr.error||JSON.stringify(jr))); return; }
             alert('Удалено');
@@ -350,28 +385,21 @@
       }catch(e){ out.innerText = 'Ошибка'; console.warn(e); }
     }
 
-    // upload via explicit upload button is used inside adm_add flow; direct endpoint available too
-    // helpers
-    function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-    // init app
+    // refresh button
     document.getElementById('refreshBtn').addEventListener('click', ()=> loadProducts());
-    window.addEventListener('load', init);
 
-    // simple checkout: send cart as message to admin chat via backend (not implemented server-side yet)
+    // cart behavior
     document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
       const c = getCart();
       if(!c.length) return alert('Корзина пуста');
-      // For now just clear cart and show a message. If you want, we can POST to server to send to admin chat.
-      alert('Тест оформления: заказ сформирован. (реальная отправка на бэкенд не реализована по умолчанию)');
-      localStorage.removeItem('fc_cart');
-      renderCart();
-      document.getElementById('cartSheet').style.display='none';
+      // simple demo: clear cart and notify
+      alert('Тест: заказ сформирован — уведомление не отправлено (нужна доработка).');
+      localStorage.removeItem('fc_cart'); renderCart(); document.getElementById('cartSheet').style.display='none';
     });
 
-    // expose for debugging
-    window._debug = { loadProducts, loadCategories, checkAuth };
-
+    // init on load
+    window.addEventListener('load', init);
+    window._debug = { loadProducts, loadCategories, loadAdminList, attachAdminHandlers };
   </script>
 </body>
 </html>
